@@ -1,0 +1,14 @@
+aio-pika
+alembic
+asyncpg
+celery
+fastapi
+httpx
+pydantic>=2.7.0,<3.0.0
+psycopg2-binary
+python-dateutil
+python-dotenv
+pytest
+pytest-asyncio
+sqlalchemy
+uvicorn[standard]
