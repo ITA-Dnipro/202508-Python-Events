@@ -1,4 +1,3 @@
-# services/Events/celery_app.py
 from celery import Celery
 from datetime import timedelta
 import os
@@ -9,7 +8,7 @@ celery_app = Celery(
     'event_scheduler',
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
-    include=['tasks'] 
+    include=['events_app.tasks'] 
 )
 
 celery_app.conf.update(

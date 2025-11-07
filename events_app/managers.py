@@ -1,8 +1,9 @@
 from typing import Optional
-from datetime import timedelta
+from datetime import timedelta, timezone
 from sqlalchemy.orm import Session
 from dateutil.relativedelta import relativedelta
 from .models import Event 
+from .schemas import EventCreate
 
 class EventManager:
     """
@@ -19,10 +20,12 @@ class EventManager:
             3. Registration deadline is the moment the new event starts.
             """
             date_shift = relativedelta(months=1) 
-            new_start_date = previous_event.start_date + date_shift
+            start_date_with_tz = previous_event.start_date.replace(tzinfo=timezone.utc)
+            new_start_date = start_date_with_tz + date_shift
             duration = timedelta(days=5) 
             new_end_date = new_start_date + duration
-            new_registration_deadline = new_start_date
+            one_second = timedelta(seconds=1)
+            new_registration_deadline = new_start_date - one_second
             
             return {
                 "start_date": new_start_date,
@@ -39,13 +42,11 @@ class EventManager:
         
         new_event_title = f"{previous_event.title.split(' - ')[0].strip()} - {month_year}"
         new_event_theme = previous_event.theme 
-        new_event_description = "will be generated based on theme of new_event_theme"
         
         new_event = Event(
             title=new_event_title,
             theme=new_event_theme,
-            description=new_event_description,
-
+            description="will be generated based on theme of new_event_theme",
             start_date=new_dates['start_date'],
             end_date=new_dates['end_date'],
             registration_deadline=new_dates['registration_deadline'],
@@ -54,3 +55,22 @@ class EventManager:
         self.db.add(new_event)
         
         return new_event
+    
+
+    def create_base_event(self, event_data: EventCreate) -> Event:
+        """
+        Creates a base event from provided data.
+        """
+        db_event = Event(**event_data.dict()) 
+        self.db.add(db_event)
+        self.db.commit()
+        self.db.refresh(db_event)
+        return db_event
+
+
+    def get_all_events(self) -> list[Event]:
+            """
+            Retrieves all events from the database.
+            Returns a list of SQLAlchemy Event objects.
+            """
+            return self.db.query(Event).all()

@@ -4,11 +4,12 @@ asyncpg
 celery
 fastapi
 httpx
-pydantic>=2.7.0,<3.0.0
+pydantic==1.10.13
 psycopg2-binary
 python-dateutil
 python-dotenv
 pytest
 pytest-asyncio
+redis
 sqlalchemy
 uvicorn[standard]
