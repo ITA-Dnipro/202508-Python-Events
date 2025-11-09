@@ -2,15 +2,25 @@ from fastapi import APIRouter, Depends, status, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional 
 from .database import get_db
-from datetime import datetime, timezone 
+from datetime import datetime, timezone, time
 import logging
 from .schemas import EventSerializer, EventCreate 
 from .models import Event
 from .managers import EventManager 
 from .tasks import generate_recurring_events 
+import pytz
 
-router = APIRouter(prefix="/events", tags=["Events & Celery Testing"])
+KYIV_TZ = pytz.timezone('Europe/Kyiv')
+
+router = APIRouter(prefix="/events")
 logger = logging.getLogger(__name__)
+
+def to_aware_utc_midnight(dt_date):
+    """Converts a date to 00:00:00 Kyiv time, then to UTC."""
+    tz_utc = timezone.utc
+    dt_naive = datetime.combine(dt_date, time(0, 0, 0))
+    dt_aware_kyiv = KYIV_TZ.localize(dt_naive)
+    return dt_aware_kyiv.astimezone(tz_utc).replace(microsecond=0)
 
 @router.post(
     "/initial",
@@ -24,12 +34,10 @@ def create_initial_event(
 ):
     """Creates the initial base event"""
     manager = EventManager(db)
-    tz_utc = timezone.utc
     
-    event_in.start_date = event_in.start_date.replace(tzinfo=tz_utc, microsecond=0)
-    event_in.end_date = event_in.end_date.replace(tzinfo=tz_utc, microsecond=0)
-    event_in.registration_deadline = event_in.registration_deadline.replace(tzinfo=tz_utc, microsecond=0)
-
+    event_in.start_date = to_aware_utc_midnight(event_in.start_date)
+    event_in.end_date = to_aware_utc_midnight(event_in.end_date)
+    event_in.registration_deadline = to_aware_utc_midnight(event_in.registration_deadline)
     if event_in.registration_deadline >= event_in.start_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -70,6 +78,7 @@ def get_all_events(
     status_code=status.HTTP_202_ACCEPTED
 )
 def trigger_celery_task():
+    '''Manually triggers the Celery task to generate recurring events.'''
     task = generate_recurring_events.delay()
     logger.info(f"Celery task generated. Task ID: {task.id}")
     return {

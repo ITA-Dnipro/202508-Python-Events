@@ -14,7 +14,7 @@ celery_app = Celery(
 celery_app.conf.update(
     beat_schedule={
         'generate-recurring-events-daily': {
-            'task': 'tasks.generate_recurring_events', 
+            'task': 'events_app.tasks.generate_recurring_events', 
             'schedule': timedelta(days=1), 
             'args': (),
         },

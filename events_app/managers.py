@@ -20,7 +20,7 @@ class EventManager:
             3. Registration deadline is the moment the new event starts.
             """
             date_shift = relativedelta(months=1) 
-            start_date_with_tz = previous_event.start_date.replace(tzinfo=timezone.utc)
+            start_date_with_tz = previous_event.start_date
             new_start_date = start_date_with_tz + date_shift
             duration = timedelta(days=5) 
             new_end_date = new_start_date + duration
