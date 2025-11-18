@@ -8,7 +8,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://postgres:585662v
 if DATABASE_URL is None:
     raise ValueError("No database URL found. Please set DATABASE_URL environment variable.")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

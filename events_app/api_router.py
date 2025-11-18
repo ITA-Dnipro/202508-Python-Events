@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Query 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional 
 from .database import get_db
 from datetime import datetime, timezone, time
@@ -46,8 +47,18 @@ def create_initial_event(
     base_title = event_in.title.split(' - ')[0].strip()
     month_year = event_in.start_date.strftime('%B %Y')
     event_in.title = f"{base_title} - {month_year}"
-    db_event = manager.create_base_event(event_in)
-    return db_event
+    
+    try:
+        db_event = manager.create_base_event(event_in)
+        db.commit()
+        return db_event
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"IntegrityError creating event: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An event with the specified unique constraints already exists."
+        )
 
 
 @router.get(
