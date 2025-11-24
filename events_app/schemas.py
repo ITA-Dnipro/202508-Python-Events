@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import datetime, timezone, date
 
 class EventBase(BaseModel):
@@ -33,3 +33,25 @@ class EventSerializer(EventBase):
     id : int
     is_active : bool
     created_at : datetime
+
+class EventRegistrationCreate(BaseModel):
+    '''Schema for registering a user to an event (Input).'''
+    role: str  
+
+    @validator('role')
+    def validate_role(cls, v):
+        if v not in ['startup', 'investor']:
+            raise ValueError('Role must be either "startup" or "investor"')
+        return v
+
+class EventRegistrationSerializer(BaseModel):
+    '''Schema for returning registration data.'''
+    id: int
+    event_id: int
+    user_id: int
+    role: str
+    status: str
+    registered_at: datetime
+
+    class Config:
+        orm_mode = True
