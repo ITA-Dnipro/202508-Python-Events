@@ -127,7 +127,11 @@ def register_event(
         )
     
     now = datetime.now(timezone.utc)
-    if now > event.registration_deadline:
+    deadline = event.registration_deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+
+    if now > deadline:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registration is closed for this event."
