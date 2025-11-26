@@ -137,7 +137,7 @@ def register_event(
             detail="Registration is closed for this event."
         )
 
-    if hasattr(current_user, "allowed_roles") and registration_data.role not in current_user.allowed_roles:
+    if registration_data.role != current_user.role and registration_data.role not in current_user.allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"You do not have a '{registration_data.role}' profile."

@@ -1,7 +1,5 @@
 from fastapi import Header, HTTPException, status, Request
 from typing import Optional, List
-import json
-import base64
 
 class CurrentUser:
     def __init__(self, id: int, allowed_roles: List[str], role: Optional[str] = None):
@@ -9,61 +7,45 @@ class CurrentUser:
         self.allowed_roles = allowed_roles
         self.role = role 
 
-def decode_jwt_payload_safe(token: str):
-    """
-    Decodes JWT payload without signature verification.
-    """
-    try:
-        parts = token.split(".")
-        if len(parts) < 2:
-            return None
-        
-        payload_b64 = parts[1]
-        padding = '=' * (4 - len(payload_b64) % 4)
-        payload_b64 += padding
-        
-        decoded_bytes = base64.urlsafe_b64decode(payload_b64)
-        return json.loads(decoded_bytes)
-    except Exception:
-        return None
-
 async def get_current_user(
     request: Request,
-    user_id_header: Optional[str] = Header(None, alias="user_id"),
-    authorization: Optional[str] = Header(None)
+    x_user_id: Optional[str] = Header(None, alias="user-id"),
+    x_role: Optional[str] = Header(None, alias="role"),
+    x_allowed_roles: Optional[str] = Header(None, alias="allowed-roles")
 ) -> CurrentUser:
-    final_user_id = None
-    final_role = None
-    final_allowed_roles = []
+    """
+    Retrieves user data strictly from Trusted Headers injected by KrakenD.
+    
+    1. NO JWT decoding (prevents spoofing).
+    2. NO logic merging roles (prevents privilege escalation).
+    3. STRICT reliance on 'allowed-roles' header for permissions.
+    """
 
-    if user_id_header:
-        final_user_id = user_id_header
-        roles_str = request.headers.get("allowed_roles") or request.headers.get("Allowed-Roles")
-        if roles_str:
-            final_allowed_roles = roles_str.split(",")
-
-    if not final_user_id and authorization:
-        try:
-            scheme, token = authorization.split()
-            if scheme.lower() == 'bearer':
-                payload = decode_jwt_payload_safe(token)
-                if payload:
-                    final_user_id = payload.get("user_id") or payload.get("sub") or payload.get("id")
-                    final_role = payload.get("role")
-                    
-                    if final_role:
-                        final_allowed_roles.append(final_role)
-        except Exception:
-            pass
-
-    if not final_user_id:
+    user_id_val = x_user_id or request.headers.get("user-id") or request.headers.get("User-ID")
+    
+    if not user_id_val:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not identified"
+            detail="User not identified (Missing Trusted Headers)"
         )
+
+    allowed_roles_val = x_allowed_roles or request.headers.get("allowed-roles") or request.headers.get("Allowed-Roles")
     
-    return CurrentUser(
-        id=int(final_user_id), 
-        allowed_roles=final_allowed_roles,
-        role=final_role
-    )
+    final_allowed_roles = []
+    if allowed_roles_val:
+        final_allowed_roles = [r.strip() for r in allowed_roles_val.split(",") if r.strip()]
+
+    final_role = x_role or request.headers.get("role") or request.headers.get("Role")
+
+    print(f"DEBUG [Events Service] -> user_id: '{user_id_val}', role: '{final_role}', allowed_roles: {final_allowed_roles}", flush=True)
+    try:
+        return CurrentUser(
+            id=int(user_id_val), 
+            allowed_roles=final_allowed_roles, 
+            role=final_role
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid User ID format in headers"
+        )
