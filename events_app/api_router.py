@@ -5,8 +5,9 @@ from typing import List, Optional
 from .database import get_db
 from datetime import datetime, timezone, time
 import logging
-from .schemas import EventSerializer, EventCreate 
-from .models import Event
+from .schemas import EventSerializer, EventCreate, EventRegistrationSerializer, EventRegistrationCreate
+from .models import Event, EventRegistration
+from .dependencies import get_current_user, CurrentUser
 from .managers import EventManager 
 from .tasks import generate_recurring_events 
 import pytz
@@ -96,3 +97,119 @@ def trigger_celery_task():
         "message": "Celery task successfully triggered.",
         "task_id": task.id
     }
+
+@router.post(
+    "/{event_id}/register",
+    response_model=EventRegistrationSerializer,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register current user for an event"
+)
+
+def register_event(
+    event_id: int,
+    registration_data: EventRegistrationCreate, 
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user) 
+):
+    """
+    Registers a user for an event checking deadlines and active status.
+    """
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found"
+        )
+    if not event.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration is not possible. Event is inactive."
+        )
+    
+    now = datetime.now(timezone.utc)
+    deadline = event.registration_deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+
+    if now > deadline:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration is closed for this event."
+        )
+
+    if registration_data.role != current_user.role and registration_data.role not in current_user.allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You do not have a '{registration_data.role}' profile."
+        )
+
+    try:
+        new_registration = EventRegistration(
+            event_id=event.id,
+            user_id=current_user.id,
+            role=registration_data.role,
+        )
+        db.add(new_registration)
+        db.commit()
+        db.refresh(new_registration)        
+        return new_registration
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User is already registered for this event."
+        )
+
+@router.delete(
+    "/{event_id}/register",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Cancel registration"
+)
+def cancel_registration(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    Cancels the current user's registration for the specified event.
+    """
+    registration = db.query(EventRegistration).filter(
+        EventRegistration.event_id == event_id,
+        EventRegistration.user_id == current_user.id
+    ).first()
+
+    if not registration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Registration not found"
+        )
+
+    db.delete(registration)
+    db.commit()
+    return None
+
+
+@router.get(
+    "/{event_id}/participants",
+    response_model=List[EventRegistrationSerializer],
+    summary="List all participants"
+)
+def list_participants(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    Shows a list of all participants for the event.
+    """
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    participants = db.query(EventRegistration).filter(
+        EventRegistration.event_id == event_id,
+        EventRegistration.status == "registered"
+    ).all()
+    
+    return participants
