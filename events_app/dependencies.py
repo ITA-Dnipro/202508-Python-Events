@@ -15,10 +15,6 @@ async def get_current_user(
 ) -> CurrentUser:
     """
     Retrieves user data strictly from Trusted Headers injected by KrakenD.
-    
-    1. NO JWT decoding (prevents spoofing).
-    2. NO logic merging roles (prevents privilege escalation).
-    3. STRICT reliance on 'allowed-roles' header for permissions.
     """
 
     user_id_val = x_user_id or request.headers.get("user-id") or request.headers.get("User-ID")
